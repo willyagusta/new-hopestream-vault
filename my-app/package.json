@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@chainlink/functions-toolkit": "^0.3.2",
     "@rainbow-me/rainbowkit": "^2.2.5",
     "@tanstack/react-query": "^5.76.1",
     "ethers": "^6.14.1",
