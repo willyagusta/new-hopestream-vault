@@ -15,6 +15,7 @@ contract DonationVault is Ownable, Pausable {
     }
 
     address public beneficiary;
+    address public authorizedCaller;
     uint256 public totalDonated;
     uint256 public totalReleased;
     Milestone[] public milestones;
@@ -46,6 +47,10 @@ contract DonationVault is Ownable, Pausable {
     donorNFT = HopeStreamNFT(_nft);
     }
 
+    function setAuthorizedCaller(address _caller) external onlyOwner {
+    authorizedCaller = _caller;
+    }
+
     function setBeneficiary(address _new) external onlyOwner {
         require(_new != address(0), "Invalid beneficiary");
         emit BeneficiaryChanged(beneficiary, _new);
@@ -65,6 +70,7 @@ contract DonationVault is Ownable, Pausable {
     // Called by Chainlink Automation (or anyone) to trigger payout
     function releaseFunds() public whenNotPaused {
         uint256 totalToRelease;
+        require(msg.sender == authorizedCaller, "Not authorized");
 
         for (uint256 i = 0; i < milestones.length; i++) {
             Milestone storage milestone = milestones[i];

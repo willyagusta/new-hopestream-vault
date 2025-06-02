@@ -24,12 +24,16 @@ contract BMKGTrigger is FunctionsClient, ConfirmedOwner {
     }
 
     // Send Chainlink Functions Request
-    function checkEarthquakeAndTrigger(bytes memory source, bytes memory secrets, string[] memory args) public {
-        Functions.Request memory req;
-        req.initializeRequestForInlineJavaScript(source);
-        if (args.length > 0) req.setArgs(args);
-        if (secrets.length > 0) req.addInlineSecrets(secrets);
+    function triggerRequest() public onlyOwner {
+        string memory source = 
+            "const url = 'https://data.bmkg.go.id/DataMKG/TEWS/gempaterkini.json';"
+            "const response = await Functions.makeHttpRequest({ url });"
+            "if (!response || !response.data) throw Error('No data');"
+            "const mag = response.data.Infogempa.gempa[0].Magnitude;"
+            "return Functions.encodeString(mag);";
 
+        Functions.Request memory req;
+        req.initializeRequestForInlineJavaScript(bytes(source));
         latestRequestId = sendRequest(req, 200_000);
     }
 
