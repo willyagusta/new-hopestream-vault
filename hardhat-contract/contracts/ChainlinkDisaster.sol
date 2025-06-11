@@ -25,15 +25,12 @@ contract BMKGTrigger is FunctionsClient, ConfirmedOwner {
 
     // Send Chainlink Functions Request
     function triggerRequest() public onlyOwner {
-        string memory source = 
-            "const url = 'https://data.bmkg.go.id/DataMKG/TEWS/gempaterkini.json';"
-            "const response = await Functions.makeHttpRequest({ url });"
-            "if (!response || !response.data) throw Error('No data');"
-            "const mag = response.data.Infogempa.gempa[0].Magnitude;"
-            "return Functions.encodeString(mag);";
-
         Functions.Request memory req;
-        req.initializeRequestForInlineJavaScript(bytes(source));
+
+        bytes32 sourceId = 0x123456789abcdef...;
+
+        req.initializeRequestForJavaScriptSource(sourceId);
+
         latestRequestId = sendRequest(req, 200_000);
     }
 

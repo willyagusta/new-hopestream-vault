@@ -1,7 +1,7 @@
 const Functions = require("@chainlink/functions-toolkit");
 
 module.exports = async () => {
-  const url = "https://data.bmkg.go.id/DataMKG/TEWS/gempaterkini.json";
+  const url = "https://data.bmkg.go.id/DataMKG/TEWS/gempadirasakan.json";
 
   const response = await Functions.makeHttpRequest({ url });
 
