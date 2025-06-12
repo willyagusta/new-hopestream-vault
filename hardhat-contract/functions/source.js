@@ -9,12 +9,12 @@ if (response.error) {
 
 const data = response.data;
 
-let trigger = false;
+let quakeDetected = false;
 for (let event of data.events || []) {
-  if (event.type === "earthquake" && event.magnitude > 5.5) {
-    trigger = true;
+  if (event.type === "earthquake" && event.magnitude > 6.0) {
+    quakeDetected = true;
     break;
   }
 }
 
-return Functions.encodeUint256(trigger ? 1 : 0);
+return Functions.encodeBool(quakeDetected);
