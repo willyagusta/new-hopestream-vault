@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import { useAccount, useWalletClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import ScrollHeader from "./components/Header";
+import DAOInterface from "./components/DAOInterface";
 
 const CONTRACT_ADDRESS = "0x6d66514137F4698D7Ebf1f68C5CB6D5aF337B8b6";
 const TARGET_ETH = 0.5;
@@ -28,6 +29,7 @@ export default function Home() {
   const [milestones, setMilestones] = useState(0);
   const [status, setStatus] = useState("");
   const [donationAmount, setDonationAmount] = useState("");
+  const [activeTab, setActiveTab] = useState("donate");
 
   useEffect(() => {
     if (walletClient) {
@@ -125,6 +127,30 @@ export default function Home() {
             className="w-full h-100 object-cover rounded-lg mb-4"
           />
 
+          {/* Tab Navigation */}
+          <div className="flex space-x-4 mb-6 border-b">
+            <button
+              onClick={() => setActiveTab("donate")}
+              className={`px-4 py-2 font-medium ${
+                activeTab === "donate"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              💰 Donate
+            </button>
+            <button
+              onClick={() => setActiveTab("governance")}
+              className={`px-4 py-2 font-medium ${
+                activeTab === "governance"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              🏛️ Governance
+            </button>
+          </div>
+
           {!isConnected && (
             <div className="mt-8">
               <p className="text-gray-700 mb-4">
@@ -134,7 +160,7 @@ export default function Home() {
             </div>
           )}
 
-          {isConnected && (
+          {isConnected && activeTab === "donate" && (
             <>
               <p className="mt-4">
                 <strong>Connected Wallet:</strong> {address}
@@ -189,6 +215,13 @@ export default function Home() {
 
               {status && <p className="mt-4 text-sm text-gray-700">{status}</p>}
             </>
+          )}
+
+          {/* Governance Tab */}
+          {isConnected && activeTab === "governance" && (
+            <div className="mt-6">
+              <DAOInterface />
+            </div>
           )}
         </div>
       </div>
