@@ -23,7 +23,7 @@ contract DonationVault is Ownable, Pausable {
     uint256 public totalReleased;
     Milestone[] public milestones;
     HopeStreamNFT public donorNFT;
-    uint256 public magnitudeThreshold = 6;
+    uint256 public magnitudeThreshold = 7;
     
     // Anti-Sybil Protection Parameters
     uint256 public minimumDonationForNFT = 0.01 ether; // Minimum 0.01 ETH to get NFT
@@ -47,17 +47,28 @@ contract DonationVault is Ownable, Pausable {
     event MaxNFTsReached(address indexed donor, uint256 maxAllowed);
     event AntiSybilParametersUpdated(uint256 minimumDonation, uint256 maxNFTs, uint256 cooldown);
 
-    modifier onlyGovernanceOrOwner() {
+    modifier onlyGovernance() {
         require(
-            msg.sender == owner() || msg.sender == governanceContract,
-            "Caller is not owner or governance"
+            msg.sender == governanceContract,
+            "Caller is not governance"
         );
         _;
     }
 
-    constructor(address _beneficiary, address _initialOwner) Ownable(_initialOwner) {
+    modifier onlyGovernanceOrOwner() {
+        require(
+            msg.sender == governanceContract || msg.sender == owner(),
+            "Caller is not governance or owner"
+        );
+        _;
+    }
+
+
+    constructor(address _beneficiary, address _initialOwner) Ownable() {
         require(_beneficiary != address(0), "Invalid beneficiary");
+        require(_initialOwner != address(0), "Invalid initial owner");
         beneficiary = _beneficiary;
+        _transferOwnership(_initialOwner);
     }
 
     receive() external payable whenNotPaused {
@@ -80,11 +91,11 @@ contract DonationVault is Ownable, Pausable {
         emit DonationReceived(msg.sender, msg.value);
     }
 
-    function setDonorNFT(address _nft) external onlyGovernanceOrOwner {
+    function setDonorNFT(address _nft) external onlyOwner() {
         donorNFT = HopeStreamNFT(_nft);
     }
 
-    function setDefenderRelayer(address _relayer) external onlyGovernanceOrOwner {
+    function setDefenderRelayer(address _relayer) external onlyOwner {
         require(_relayer != address(0), "Invalid relayer address");
         emit DefenderRelayerChanged(defenderRelayer, _relayer);
         defenderRelayer = _relayer;
@@ -96,7 +107,7 @@ contract DonationVault is Ownable, Pausable {
         governanceContract = _governanceContract;
     }
 
-    function setBeneficiary(address _new) external onlyGovernanceOrOwner {
+    function setBeneficiary(address _new) external onlyGovernance {
         require(_new != address(0), "Invalid beneficiary");
         emit BeneficiaryChanged(beneficiary, _new);
         beneficiary = _new;
@@ -108,7 +119,7 @@ contract DonationVault is Ownable, Pausable {
         emit MilestoneAdded(_releaseAmount, block.timestamp);
     }
 
-    function addMilestoneWithTime(uint256 _releaseTime, uint256 _releaseAmount) external onlyGovernanceOrOwner {
+    function addMilestoneWithTime(uint256 _releaseTime, uint256 _releaseAmount) external onlyGovernance {
         require(_releaseAmount > 0, "Release amount must be greater than zero");
         require(_releaseTime > block.timestamp, "Release time must be in the future");
         milestones.push(Milestone(_releaseTime, _releaseAmount, false));
@@ -214,19 +225,19 @@ contract DonationVault is Ownable, Pausable {
     // View functions for anti-Sybil info
     function getDonorInfo(address donor) external view returns (
         uint256 nftCount,
-        uint256 totalDonated,
+        uint256 totalDonatedByDonor,
         uint256 lastDonation,
         uint256 nextAllowedDonation,
         uint256 nextRequiredAmount
     ) {
         uint256 nftCount_ = nftCountPerAddress[donor];
-        uint256 totalDonated_ = address(donorNFT) != address(0) ? donorNFT.getTotalDonationAmount(donor) : 0;
+        uint256 totalDonatedByDonor_ = address(donorNFT) != address(0) ? donorNFT.getTotalDonationAmount(donor) : 0;
         uint256 lastDonation_ = lastDonationTime[donor];
         
         uint256 nextAllowed = lastDonation_ == 0 ? 0 : lastDonation_ + donationCooldown;
         uint256 nextRequired = minimumDonationForNFT * (1 + nftCount_ / 2);
         
-        return (nftCount_, totalDonated_, lastDonation_, nextAllowed, nextRequired);
+        return (nftCount_, totalDonatedByDonor_, lastDonation_, nextAllowed, nextRequired);
     }
     
     function getAntiSybilParameters() external view returns (
