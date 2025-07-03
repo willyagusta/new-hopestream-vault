@@ -19,12 +19,11 @@ contract HopeStreamGovernor is
     GovernorVotesQuorumFraction,
     GovernorTimelockControl
 {
-    HopeStreamNFT public immutable donorNFT;
-    DonationVault public immutable donationVault;
+    address public donationVault;
+    address public donorNFT;
     
-    // Proposal types for better organization
     enum ProposalType {
-        CHANGE_BENEFICIARY,
+        CUSTOM,
         PAUSE_CONTRACT,
         UNPAUSE_CONTRACT,
         ADD_MILESTONE,
@@ -33,64 +32,34 @@ contract HopeStreamGovernor is
         EMERGENCY_ACTION
     }
     
-    // Track proposal types
     mapping(uint256 => ProposalType) public proposalTypes;
     
-    // Events
-    event ProposalCreatedWithType(uint256 indexed proposalId, ProposalType proposalType, address indexed proposer);
-    event BeneficiaryChangeProposed(uint256 indexed proposalId, address indexed currentBeneficiary, address indexed newBeneficiary);
-    event PauseProposed(uint256 indexed proposalId, bool pauseState);
-    event EmergencyActionProposed(uint256 indexed proposalId, address indexed target, bytes data);
+    event ProposalCreatedWithType(uint256 proposalId, ProposalType proposalType, address proposer);
+    event PauseProposed(uint256 proposalId, bool shouldPause);
+    event EmergencyActionProposed(uint256 proposalId, address target, bytes data);
 
     constructor(
-        HopeStreamNFT _token,
-        TimelockController _timelock,
-        DonationVault _vault
+        address _donorNFT,
+        address _donationVault,
+        TimelockController _timelock
     )
-        Governor("HopeStreamGovernor")
-        GovernorSettings(
-            7200, /* 1 day (in blocks, assuming 12 second blocks) */
-            50400, /* 1 week */
-            0.1 ether /* minimum 0.1 ETH donated to propose */
-        )
-        GovernorVotes(_token)
-        GovernorVotesQuorumFraction(4) /* 4% quorum */
+        Governor("HopeStream Governor")
+        GovernorSettings(7200, 50400, 1e16) // 24 hours, 1 week, 0.01 ETH
+        GovernorVotes(IVotes(_donorNFT))
+        GovernorVotesQuorumFraction(4) // 4%
         GovernorTimelockControl(_timelock)
     {
-        donorNFT = _token;
-        donationVault = _vault;
+        donorNFT = _donorNFT;
+        donationVault = _donationVault;
     }
-
-    // Specialized proposal functions
-    function proposeBeneficiaryChange(
-        address newBeneficiary,
-        string memory description
-    ) public returns (uint256) {
-        require(newBeneficiary != address(0), "Invalid beneficiary address");
-        
-        address[] memory targets = new address[](1);
-        uint256[] memory values = new uint256[](1);
-        bytes[] memory calldatas = new bytes[](1);
-        
-        targets[0] = address(donationVault);
-        values[0] = 0;
-        calldatas[0] = abi.encodeWithSignature("setBeneficiary(address)", newBeneficiary);
-        
-        uint256 proposalId = propose(targets, values, calldatas, description);
-        proposalTypes[proposalId] = ProposalType.CHANGE_BENEFICIARY;
-        
-        emit ProposalCreatedWithType(proposalId, ProposalType.CHANGE_BENEFICIARY, msg.sender);
-        emit BeneficiaryChangeProposed(proposalId, donationVault.beneficiary(), newBeneficiary);
-        
-        return proposalId;
-    }
-
+    
+    // Proposal creation functions
     function proposePause(string memory description) public returns (uint256) {
         address[] memory targets = new address[](1);
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
         
-        targets[0] = address(donationVault);
+        targets[0] = donationVault;
         values[0] = 0;
         calldatas[0] = abi.encodeWithSignature("pause()");
         
@@ -108,7 +77,7 @@ contract HopeStreamGovernor is
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
         
-        targets[0] = address(donationVault);
+        targets[0] = donationVault;
         values[0] = 0;
         calldatas[0] = abi.encodeWithSignature("unpause()");
         
@@ -131,7 +100,7 @@ contract HopeStreamGovernor is
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
         
-        targets[0] = address(donationVault);
+        targets[0] = donationVault;
         values[0] = 0;
         calldatas[0] = abi.encodeWithSignature("addMilestone(uint256)", releaseAmount);
         
@@ -153,7 +122,7 @@ contract HopeStreamGovernor is
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
         
-        targets[0] = address(donationVault);
+        targets[0] = donationVault;
         values[0] = 0;
         calldatas[0] = abi.encodeWithSignature("setDefenderRelayer(address)", newRelayer);
         
@@ -175,15 +144,16 @@ contract HopeStreamGovernor is
         require(maxNFTs > 0 && maxNFTs <= 100, "Invalid max NFTs");
         require(cooldown <= 24 hours, "Cooldown too long");
         
-        // Extra protection: require higher voting power for anti-Sybil changes
-        uint256 proposerVotingPower = donorNFT.getVotes(msg.sender);
+        // Import the NFT interface to check voting power
+        IVotes nft = IVotes(donorNFT);
+        uint256 proposerVotingPower = nft.getVotes(msg.sender);
         require(proposerVotingPower >= 1 ether, "Insufficient voting power for anti-Sybil proposal");
         
         address[] memory targets = new address[](1);
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
         
-        targets[0] = address(donationVault);
+        targets[0] = donationVault;
         values[0] = 0;
         calldatas[0] = abi.encodeWithSignature(
             "updateAntiSybilParameters(uint256,uint256,uint256)",
@@ -230,26 +200,26 @@ contract HopeStreamGovernor is
     }
 
     function getVotingPower(address account) public view returns (uint256) {
-        return donorNFT.getVotes(account);
+        return IVotes(donorNFT).getVotes(account);
     }
 
     function getTotalVotingPower() public view returns (uint256) {
-        return donorNFT.getPastTotalSupply(block.number - 1);
+        return IVotes(donorNFT).getPastTotalSupply(block.number - 1);
     }
 
-    // Required overrides
-    function votingDelay() public view override(IGovernor, GovernorSettings) returns (uint256) {
+    // Required overrides for OpenZeppelin v5.x compatibility
+    function votingDelay() public view override(Governor, GovernorSettings) returns (uint256) {
         return super.votingDelay();
     }
 
-    function votingPeriod() public view override(IGovernor, GovernorSettings) returns (uint256) {
+    function votingPeriod() public view override(Governor, GovernorSettings) returns (uint256) {
         return super.votingPeriod();
     }
 
     function quorum(uint256 blockNumber)
         public
         view
-        override(IGovernor, GovernorVotesQuorumFraction)
+        override(Governor, GovernorVotesQuorumFraction)
         returns (uint256)
     {
         return super.quorum(blockNumber);
@@ -273,14 +243,33 @@ contract HopeStreamGovernor is
         return super.state(proposalId);
     }
 
-    function _execute(
+    function proposalNeedsQueuing(uint256 proposalId)
+        public
+        view
+        override(Governor, GovernorTimelockControl)
+        returns (bool)
+    {
+        return super.proposalNeedsQueuing(proposalId);
+    }
+
+    function _queueOperations(
+        uint256 proposalId,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(Governor, GovernorTimelockControl) returns (uint48) {
+        return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
+    }
+
+    function _executeOperations(
         uint256 proposalId,
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(Governor, GovernorTimelockControl) {
-        super._execute(proposalId, targets, values, calldatas, descriptionHash);
+        super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
 
     function _cancel(
@@ -304,7 +293,7 @@ contract HopeStreamGovernor is
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(Governor, GovernorTimelockControl)
+        override(Governor)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);

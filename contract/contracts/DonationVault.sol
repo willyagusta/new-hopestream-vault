@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import "@openzeppelin/contracts/governance/Governor.sol";
 import "./HopeStreamNFT.sol";
@@ -64,7 +64,7 @@ contract DonationVault is Ownable, Pausable {
     }
 
 
-    constructor(address _beneficiary, address _initialOwner) Ownable() {
+    constructor(address _beneficiary, address _initialOwner) Ownable(_initialOwner) {
         require(_beneficiary != address(0), "Invalid beneficiary");
         require(_initialOwner != address(0), "Invalid initial owner");
         beneficiary = _beneficiary;
