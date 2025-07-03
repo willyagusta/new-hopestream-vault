@@ -540,23 +540,26 @@ const EarthquakeMap = () => {
 
       {/* Earthquake Details */}
       {earthquakes.length > 0 && (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {earthquakes.map((eq, index) => (
-            <div key={index} className="border-l-4 pl-4 py-2" style={{ borderLeftColor: getMagnitudeColor(eq.Magnitude) }}>
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-lg">{eq.Magnitude}</span>
-                    <span className="text-sm text-gray-500">Magnitude</span>
-                    <span className="text-sm bg-gray-100 px-2 py-1 rounded">{eq.Kedalaman || 'Unknown depth'}</span>
-                  </div>
-                  <p className="text-sm text-gray-700 mb-1">{eq.Wilayah || 'Unknown location'}</p>
-                  <p className="text-xs text-gray-500">{eq.Tanggal || 'Unknown date'} at {eq.Jam || 'Unknown time'}</p>
+            <div key={index} className="border-l-4 pl-4 py-3 bg-gray-50 rounded-r-lg" style={{ borderLeftColor: getMagnitudeColor(eq.Magnitude) }}>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="font-bold text-lg">{eq.Magnitude}</span>
+                  <span className="text-sm text-gray-500">Magnitude</span>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-gray-700">{eq.Wilayah || 'Unknown location'}</p>
+                  <p className="text-xs text-gray-500">{eq.Tanggal || 'Unknown date'}</p>
+                  <p className="text-xs text-gray-500">{eq.Jam || 'Unknown time'}</p>
+                  <p className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-700 inline-block">
+                    {eq.Kedalaman || 'Unknown depth'}
+                  </p>
                   {eq.Dirasakan && (
-                    <p className="text-xs text-blue-600 mt-1">Felt: {eq.Dirasakan}</p>
+                    <p className="text-xs text-blue-600 font-medium">Felt: {eq.Dirasakan}</p>
                   )}
                 </div>
-                <div className="text-right text-xs text-gray-500">
+                <div className="text-xs text-gray-400 pt-2 border-t border-gray-200">
                   <div>Lat: {eq.Lintang || 'N/A'}</div>
                   <div>Lng: {eq.Bujur || 'N/A'}</div>
                 </div>
