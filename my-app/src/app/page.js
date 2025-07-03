@@ -6,6 +6,7 @@ import { useAccount, useWalletClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import ScrollHeader from "./components/Header";
 import DAOInterface from "./components/DAOInterface";
+import EarthquakeMap from "./components/EarthquakeInterface";
 
 const CONTRACT_ADDRESS = "0x6d66514137F4698D7Ebf1f68C5CB6D5aF337B8b6";
 const TARGET_ETH = 0.5;
@@ -120,6 +121,9 @@ export default function Home() {
             This HopeStream vault supports communities affected by natural disasters in any countries across the world.
             Every donation helps fund emergency aid, food, water, shelter, and recovery programs.
           </p>
+          
+          {/* Add Earthquake Visualization */}
+          <EarthquakeMap />
 
           <img
             src="/disaster.jpg"
