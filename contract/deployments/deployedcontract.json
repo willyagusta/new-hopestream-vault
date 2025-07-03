@@ -1,0 +1,12 @@
+{
+  "network": "sepolia",
+  "chainId": "11155111",
+  "deployer": "0x5036054Ae25B0517b21A20D6A017e64AEE05ce3B",
+  "timestamp": "2025-07-03T11:34:19.998Z",
+  "contracts": {
+    "HopeStreamNFT": "0x2ee4952978E1B0753d03820840367bebe4a8Ff3b",
+    "DonationVault": "0x0a9F6B6cF48039A6402460e3189D7D1b780CD90c",
+    "TimelockController": "0x9f5341c7cCDC5a0bA8E6bdd5461f2Adb3C21c3D1",
+    "HopeStreamGovernor": "0xD16Ed14EE05727485409e18E45f518f4BAE5Fcf1"
+  }
+}

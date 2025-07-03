@@ -114,9 +114,8 @@ async function main() {
         
         // Setup Timelock roles
         console.log("  - Setting up Timelock roles...");
-        const PROPOSER_ROLE = await timelock.PROPOSER_ROLE();
-        const EXECUTOR_ROLE = await timelock.EXECUTOR_ROLE();
-        const TIMELOCK_ADMIN_ROLE = await timelock.TIMELOCK_ADMIN_ROLE();
+        const PROPOSER_ROLE = timelock.PROPOSER_ROLE;
+        const EXECUTOR_ROLE = timelock.EXECUTOR_ROLE;
         
         // Grant proposer role to Governor
         await timelock.grantRole(PROPOSER_ROLE, governorAddress);
@@ -159,9 +158,13 @@ async function main() {
         console.log("✅ Latest addresses saved to:", latestFile);
         console.log();
 
-        // ===== 8. Contract Verification =====
-        if (isMainnet && process.env.ETHERSCAN_API_KEY) {
+        // ===== 8. Contract Verification
+        if (process.env.ETHERSCAN_API_KEY) {
             console.log("🔍 Verifying contracts on Etherscan...");
+            
+            // Wait for contracts to propagate
+            console.log("⏳ Waiting 30 seconds for contracts to propagate...");
+            await new Promise(resolve => setTimeout(resolve, 30000));
             
             for (const contract of verificationParams) {
                 try {
@@ -173,9 +176,12 @@ async function main() {
                     console.log(`  ✅ ${contract.name} verified successfully`);
                 } catch (error) {
                     console.log(`  ⚠️ ${contract.name} verification failed:`, error.message);
+                    if (error.message.includes("already verified")) {
+                        console.log(`  ✅ ${contract.name} was already verified`);
+                    }
                 }
             }
-        } else if (isMainnet) {
+        } else {
             console.log("⚠️ Skipping contract verification - ETHERSCAN_API_KEY not set");
         }
         console.log();
