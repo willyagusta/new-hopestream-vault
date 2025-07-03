@@ -7,9 +7,9 @@ import snapshot from "@snapshot-labs/snapshot.js";
 
 // Update these with your actual deployed contract addresses
 const CONTRACTS = {
-  DONOR_NFT: "0x6d66514137F4698D7Ebf1f68C5CB6D5aF337B8b6", // Update with actual NFT contract
-  DONATION_VAULT: "0x6d66514137F4698D7Ebf1f68C5CB6D5aF337B8b6", // Your vault contract
-  GOVERNOR: "0x..." // Add if you have a separate governor contract
+  DONOR_NFT: "0x2ee4952978E1B0753d03820840367bebe4a8Ff3b",
+  DONATION_VAULT: "0x0a9F6B6cF48039A6402460e3189D7D1b780CD90c",
+  GOVERNOR: "0xD16Ed14EE05727485409e18E45f518f4BAE5Fcf1"
 };
 
 const NFT_ABI = [
