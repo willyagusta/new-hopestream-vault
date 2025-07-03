@@ -126,18 +126,13 @@ describe("DAO Integration Tests", function () {
     });
 
     describe("Complete Governance Workflow", function () {
-        it("Should execute full beneficiary change proposal workflow", async function () {
-            const { governor, vault, newBeneficiary, proposer, voter1, voter2 } = 
+        it("Should execute full pause proposal workflow", async function () {
+            const { governor, vault, proposer, voter1, voter2 } = 
                 await loadFixture(createDonorsAndDelegateFixture);
 
-            const originalBeneficiary = await vault.beneficiary();
-
-            // Step 1: Create proposal
-            const description = "Change beneficiary to support new cause";
-            const tx = await governor.connect(proposer).proposeBeneficiaryChange(
-                newBeneficiary.address, 
-                description
-            );
+            // Step 1: Create proposal - using pause/unpause workflow instead of beneficiary change
+            const description = "Pause contract for emergency maintenance";
+            const tx = await governor.connect(proposer).proposePause(description);
             const receipt = await tx.wait();
             const proposalId = receipt.logs.find(log => log.fragment?.name === "ProposalCreated").args.proposalId;
 
@@ -160,7 +155,7 @@ describe("DAO Integration Tests", function () {
             const descriptionHash = ethers.keccak256(ethers.toUtf8Bytes(description));
             const targets = [vault.target];
             const values = [0];
-            const calldatas = [vault.interface.encodeFunctionData("setBeneficiary", [newBeneficiary.address])];
+            const calldatas = [vault.interface.encodeFunctionData("pause", [])];
 
             await governor.queue(targets, values, calldatas, descriptionHash);
             expect(await governor.state(proposalId)).to.equal(5); // Queued
@@ -170,11 +165,10 @@ describe("DAO Integration Tests", function () {
 
             // Step 7: Execute proposal
             await expect(governor.execute(targets, values, calldatas, descriptionHash))
-                .to.emit(vault, "BeneficiaryChanged")
-                .withArgs(originalBeneficiary, newBeneficiary.address);
+                .to.emit(vault, "Paused");
 
             expect(await governor.state(proposalId)).to.equal(7); // Executed
-            expect(await vault.beneficiary()).to.equal(newBeneficiary.address);
+            expect(await vault.paused()).to.be.true;
         });
 
         it("Should execute milestone creation and fund release workflow", async function () {

@@ -16,10 +16,10 @@ describe("DonationVault", function () {
 
         // Set up governance and relayer first (required for other function calls)
         await vault.setGovernanceContract(governance.address);
-        await vault.connect(governance).setDefenderRelayer(relayer.address);
+        await vault.connect(owner).setDefenderRelayer(relayer.address);
         
         // Set up the relationship between contracts
-        await vault.connect(governance).setDonorNFT(nft.target);
+        await vault.connect(owner).setDonorNFT(nft.target);
         await nft.setDonationVault(vault.target);
 
         return { 
@@ -156,7 +156,7 @@ describe("DonationVault", function () {
             await vault.connect(owner).pause();
             
             await expect(donor1.sendTransaction({ to: vault.target, value: ethers.parseEther("0.1") }))
-                .to.be.revertedWith("Pausable: paused");
+                .to.be.revertedWithCustomError(vault, "EnforcedPause");
         });
     });
 

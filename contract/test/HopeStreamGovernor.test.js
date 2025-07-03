@@ -30,18 +30,9 @@ describe("HopeStreamGovernor", function () {
         await vault.setGovernanceContract(timelock.target);  // Timelock executes, not governor
         await nft.setDonationVault(vault.target);
         
-        // Impersonate timelock contract to set donor NFT (since timelock is the governance contract)
-        await ethers.provider.send("hardhat_impersonateAccount", [timelock.target]);
-        const governanceSigner = await ethers.getSigner(timelock.target);
-        
-        // Fund the timelock account for gas (impersonated account needs ETH for gas)
-        await ethers.provider.send("hardhat_setBalance", [
-            timelock.target,
-            "0x1000000000000000000" // 1 ETH in hex
-        ]);
-        
-        await vault.connect(governanceSigner).setDonorNFT(nft.target);
-        await ethers.provider.send("hardhat_stopImpersonatingAccount", [timelock.target]);
+        // setDonorNFT and setDefenderRelayer are onlyOwner functions, so call them with owner
+        await vault.connect(owner).setDonorNFT(nft.target);
+        await vault.connect(owner).setDefenderRelayer(relayer.address);
 
         // Set up timelock roles
         const proposerRole = await timelock.PROPOSER_ROLE();
@@ -83,7 +74,7 @@ describe("HopeStreamGovernor", function () {
         it("Should set correct parameters", async function () {
             const { governor, nft, vault } = await loadFixture(deployGovernorFixture);
             
-            expect(await governor.name()).to.equal("HopeStreamGovernor");
+            expect(await governor.name()).to.equal("HopeStream Governor");
             expect(await governor.donorNFT()).to.equal(nft.target);
             expect(await governor.donationVault()).to.equal(vault.target);
             expect(await governor.votingDelay()).to.equal(7200); // 1 day in blocks
@@ -109,16 +100,6 @@ describe("HopeStreamGovernor", function () {
     });
 
     describe("Proposal Creation", function () {
-        it("Should allow creating beneficiary change proposal", async function () {
-            const { governor, newBeneficiary, proposer } = await loadFixture(deployGovernorFixture);
-            
-            const description = "Change beneficiary to new address";
-            
-            await expect(governor.connect(proposer).proposeBeneficiaryChange(newBeneficiary.address, description))
-                .to.emit(governor, "ProposalCreatedWithType")
-                .to.emit(governor, "BeneficiaryChangeProposed");
-        });
-
         it("Should allow creating pause proposal", async function () {
             const { governor, proposer } = await loadFixture(deployGovernorFixture);
             
@@ -203,23 +184,16 @@ describe("HopeStreamGovernor", function () {
         });
 
         it("Should reject proposals from users without enough voting power", async function () {
-            const { governor, owner, newBeneficiary } = await loadFixture(deployGovernorFixture);
+            const { governor, owner } = await loadFixture(deployGovernorFixture);
             
             // Owner has no donations, so no voting power
-            await expect(governor.connect(owner).proposeBeneficiaryChange(
-                newBeneficiary.address, 
-                "Change beneficiary"
-            )).to.be.revertedWith("Governor: proposer votes below proposal threshold");
+            await expect(governor.connect(owner).proposePause(
+                "Pause the contract"
+            )).to.be.revertedWithCustomError(governor, "GovernorInsufficientProposerVotes");
         });
 
         it("Should validate proposal parameters", async function () {
             const { governor, proposer } = await loadFixture(deployGovernorFixture);
-            
-            // Test invalid beneficiary address
-            await expect(governor.connect(proposer).proposeBeneficiaryChange(
-                ethers.ZeroAddress, 
-                "Invalid beneficiary"
-            )).to.be.revertedWith("Invalid beneficiary address");
             
             // Test invalid milestone amount
             await expect(governor.connect(proposer).proposeAddMilestone(
@@ -237,12 +211,11 @@ describe("HopeStreamGovernor", function () {
 
     describe("Voting", function () {
         it("Should allow voting on proposals", async function () {
-            const { governor, newBeneficiary, proposer, voter1 } = await loadFixture(deployGovernorFixture);
+            const { governor, proposer, voter1 } = await loadFixture(deployGovernorFixture);
             
             // Create proposal
-            const tx = await governor.connect(proposer).proposeBeneficiaryChange(
-                newBeneficiary.address, 
-                "Change beneficiary"
+            const tx = await governor.connect(proposer).proposePause(
+                "Pause the contract"
             );
             const receipt = await tx.wait();
             const proposalId = governor.interface.parseLog(receipt.logs[0]).args[0];
@@ -268,12 +241,11 @@ describe("HopeStreamGovernor", function () {
         });
 
         it("Should calculate votes based on donation amounts", async function () {
-            const { governor, newBeneficiary, proposer, voter1, voter2 } = await loadFixture(deployGovernorFixture);
+            const { governor, proposer, voter1, voter2 } = await loadFixture(deployGovernorFixture);
             
             // Create proposal
-            const tx = await governor.connect(proposer).proposeBeneficiaryChange(
-                newBeneficiary.address, 
-                "Change beneficiary"
+            const tx = await governor.connect(proposer).proposePause(
+                "Pause the contract"
             );
             const receipt = await tx.wait();
             const proposalId = governor.interface.parseLog(receipt.logs[0]).args[0];
@@ -292,12 +264,11 @@ describe("HopeStreamGovernor", function () {
         });
 
         it("Should not allow voting outside voting period", async function () {
-            const { governor, newBeneficiary, proposer, voter1 } = await loadFixture(deployGovernorFixture);
+            const { governor, proposer, voter1 } = await loadFixture(deployGovernorFixture);
             
             // Create proposal
-            const tx = await governor.connect(proposer).proposeBeneficiaryChange(
-                newBeneficiary.address, 
-                "Change beneficiary"
+            const tx = await governor.connect(proposer).proposePause(
+                "Pause the contract"
             );
             const receipt = await tx.wait();
             const proposalId = governor.interface.parseLog(receipt.logs[0]).args[0];
@@ -314,12 +285,11 @@ describe("HopeStreamGovernor", function () {
         });
 
         it("Should not allow double voting", async function () {
-            const { governor, newBeneficiary, proposer, voter1 } = await loadFixture(deployGovernorFixture);
+            const { governor, proposer, voter1 } = await loadFixture(deployGovernorFixture);
             
             // Create proposal
-            const tx = await governor.connect(proposer).proposeBeneficiaryChange(
-                newBeneficiary.address, 
-                "Change beneficiary"
+            const tx = await governor.connect(proposer).proposePause(
+                "Pause the contract"
             );
             const receipt = await tx.wait();
             const proposalId = governor.interface.parseLog(receipt.logs[0]).args[0];
@@ -337,13 +307,15 @@ describe("HopeStreamGovernor", function () {
     });
 
     describe("Proposal Execution", function () {
-        it("Should execute successful beneficiary change proposal", async function () {
-            const { governor, vault, newBeneficiary, proposer, voter1, voter2 } = await loadFixture(deployGovernorFixture);
+        it("Should execute successful unpause proposal", async function () {
+            const { governor, vault, proposer, voter1, voter2 } = await loadFixture(deployGovernorFixture);
             
-            // Create proposal
-            const tx = await governor.connect(proposer).proposeBeneficiaryChange(
-                newBeneficiary.address, 
-                "Change beneficiary"
+            // First pause the contract
+            await vault.pause();
+            
+            // Create unpause proposal
+            const tx = await governor.connect(proposer).proposeUnpause(
+                "Unpause the contract"
             );
             const receipt = await tx.wait();
             const proposalId = governor.interface.parseLog(receipt.logs[0]).args[0];
@@ -357,26 +329,22 @@ describe("HopeStreamGovernor", function () {
             await time.advanceBlockTo((await time.latestBlock()) + 50401);
             
             // Queue the proposal
-            const description = "Change beneficiary";
+            const description = "Unpause the contract";
             const descriptionHash = ethers.keccak256(ethers.toUtf8Bytes(description));
             const targets = [vault.target];
             const values = [0];
-            const calldatas = [vault.interface.encodeFunctionData("setBeneficiary", [newBeneficiary.address])];
+            const calldatas = [vault.interface.encodeFunctionData("unpause", [])];
             
             await governor.queue(targets, values, calldatas, descriptionHash);
             
             // Wait for timelock delay
             await time.increase(86401); // 1 day + 1 second
             
-            // Get old beneficiary before execution
-            const oldBeneficiary = await vault.beneficiary();
-            
             // Execute the proposal
             await expect(governor.execute(targets, values, calldatas, descriptionHash))
-                .to.emit(vault, "BeneficiaryChanged")
-                .withArgs(oldBeneficiary, newBeneficiary.address);
+                .to.emit(vault, "Unpaused");
             
-            expect(await vault.beneficiary()).to.equal(newBeneficiary.address);
+            expect(await vault.paused()).to.be.false;
         });
 
         it("Should execute pause proposal", async function () {
