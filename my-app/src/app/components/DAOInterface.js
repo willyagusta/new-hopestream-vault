@@ -3,67 +3,62 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useAccount, useWalletClient } from "wagmi";
+import snapshot from "@snapshot-labs/snapshot.js";
 
-// Contract addresses (update these after deployment)
+// Update these with your actual deployed contract addresses
 const CONTRACTS = {
-  DONOR_NFT: "0x...", // Update after deployment
-  DONATION_VAULT: "0x...", // Update after deployment
-  TIMELOCK: "0x...", // Update after deployment
-  GOVERNOR: "0x...", // Update after deployment
+  DONOR_NFT: "0x6d66514137F4698D7Ebf1f68C5CB6D5aF337B8b6", // Update with actual NFT contract
+  DONATION_VAULT: "0x6d66514137F4698D7Ebf1f68C5CB6D5aF337B8b6", // Your vault contract
+  GOVERNOR: "0x..." // Add if you have a separate governor contract
 };
-
-const GOVERNOR_ABI = [
-  "function proposeBeneficiaryChange(address newBeneficiary, string memory description) returns (uint256)",
-  "function proposePause(string memory description) returns (uint256)",
-  "function proposeUnpause(string memory description) returns (uint256)",
-  "function proposeAddMilestone(uint256 releaseAmount, string memory description) returns (uint256)",
-  "function castVote(uint256 proposalId, uint8 support) returns (uint256)",
-  "function state(uint256 proposalId) view returns (uint8)",
-  "function proposalVotes(uint256 proposalId) view returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes)",
-  "function getVotingPower(address account) view returns (uint256)",
-  "function votingDelay() view returns (uint256)",
-  "function votingPeriod() view returns (uint256)",
-  "function quorum(uint256 blockNumber) view returns (uint256)",
-  "function proposalDeadline(uint256 proposalId) view returns (uint256)",
-  "function hasVoted(uint256 proposalId, address account) view returns (bool)",
-  "event ProposalCreated(uint256 indexed proposalId, address indexed proposer, address[] targets, uint256[] values, string[] signatures, bytes[] calldatas, uint256 startBlock, uint256 endBlock, string description)"
-];
 
 const NFT_ABI = [
   "function getVotes(address account) view returns (uint256)",
   "function delegate(address delegatee)",
   "function delegates(address account) view returns (address)",
-  "function balanceOf(address owner) view returns (uint256)"
+  "function balanceOf(address owner) view returns (uint256)",
+  "function totalSupply() view returns (uint256)"
 ];
 
 const VAULT_ABI = [
-  "function getDAOStats() view returns (address currentBeneficiary, address currentGovernance, address currentRelayer, uint256 currentDonated, uint256 currentReleased, uint256 currentMilestones, bool isPaused)"
+  "function totalDonated() view returns (uint256)",
+  "function totalReleased() view returns (uint256)",
+  "function getMilestonesCount() view returns (uint256)",
+  "function releaseFunds()",
+  "function pause()",
+  "function unpause()",
+  "function donate() payable",
+  // Add governance functions for execution
+  "function executeProposal(bytes calldata data)",
+  "function setBeneficiary(address newBeneficiary)",
+  "function emergencyPause()"
 ];
+
+// Use a custom Snapshot space name (you'll need to create this)
+const SNAPSHOT_SPACE = "hopestream-dao"; // Change to your actual space
+const SNAPSHOT_HUB = "https://hub.snapshot.org";
 
 export default function DAOInterface() {
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
 
-  // Contract instances
-  const [governor, setGovernor] = useState(null);
   const [nft, setNFT] = useState(null);
   const [vault, setVault] = useState(null);
-
-  // State
   const [votingPower, setVotingPower] = useState("0");
   const [hasNFT, setHasNFT] = useState(false);
   const [isDelegated, setIsDelegated] = useState(false);
-  const [proposals, setProposals] = useState([]);
   const [vaultStats, setVaultStats] = useState(null);
+  const [snapshotProposals, setSnapshotProposals] = useState([]);
   const [status, setStatus] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
 
-  // Form states
-  const [newBeneficiary, setNewBeneficiary] = useState("");
-  const [milestoneAmount, setMilestoneAmount] = useState("");
+  const [proposalTitle, setProposalTitle] = useState("");
   const [proposalDescription, setProposalDescription] = useState("");
+  const [proposalType, setProposalType] = useState("general");
+  const [newBeneficiary, setNewBeneficiary] = useState("");
 
-  // Initialize contracts
+  const client = new snapshot.Client712(SNAPSHOT_HUB);
+
   useEffect(() => {
     if (walletClient && isConnected) {
       const setup = async () => {
@@ -71,18 +66,16 @@ export default function DAOInterface() {
           const browserProvider = new ethers.BrowserProvider(window.ethereum);
           const signer = await browserProvider.getSigner();
 
-          const governorContract = new ethers.Contract(CONTRACTS.GOVERNOR, GOVERNOR_ABI, signer);
           const nftContract = new ethers.Contract(CONTRACTS.DONOR_NFT, NFT_ABI, signer);
           const vaultContract = new ethers.Contract(CONTRACTS.DONATION_VAULT, VAULT_ABI, signer);
 
-          setGovernor(governorContract);
           setNFT(nftContract);
           setVault(vaultContract);
 
-          // Load initial data
-          await loadUserData(nftContract, governorContract, vaultContract);
+          await loadUserData(nftContract, vaultContract);
+          await fetchSnapshotProposals();
         } catch (error) {
-          console.error("Contract setup failed:", error);
+          console.error("Setup failed:", error);
           setStatus("Failed to connect to contracts");
         }
       };
@@ -90,31 +83,27 @@ export default function DAOInterface() {
     }
   }, [walletClient, isConnected]);
 
-  const loadUserData = async (nftContract, governorContract, vaultContract) => {
+  const loadUserData = async (nftContract, vaultContract) => {
     if (!address) return;
-
     try {
-      // Get user's NFT balance and voting power
       const balance = await nftContract.balanceOf(address);
       const votes = await nftContract.getVotes(address);
       const delegate = await nftContract.delegates(address);
-      
+
       setHasNFT(balance > 0);
       setVotingPower(votes.toString());
       setIsDelegated(delegate === address);
 
-      // Get vault stats
-      const stats = await vaultContract.getDAOStats();
-      setVaultStats({
-        beneficiary: stats[0],
-        governance: stats[1],
-        relayer: stats[2],
-        donated: ethers.formatEther(stats[3]),
-        released: ethers.formatEther(stats[4]),
-        milestones: stats[5].toString(),
-        isPaused: stats[6]
-      });
+      // Load vault stats
+      const donated = await vaultContract.totalDonated();
+      const released = await vaultContract.totalReleased();
+      const milestones = await vaultContract.getMilestonesCount();
 
+      setVaultStats({
+        donated: ethers.formatEther(donated),
+        released: ethers.formatEther(released),
+        milestones: milestones.toString(),
+      });
     } catch (error) {
       console.error("Failed to load user data:", error);
     }
@@ -128,111 +117,182 @@ export default function DAOInterface() {
       await tx.wait();
       setStatus("Votes delegated successfully!");
       setIsDelegated(true);
-      await loadUserData(nft, governor, vault);
+      await loadUserData(nft, vault);
     } catch (error) {
       console.error(error);
       setStatus("Failed to delegate votes");
     }
   };
 
-  const createBeneficiaryProposal = async () => {
-    if (!governor || !newBeneficiary || !proposalDescription) return;
+  const createSnapshotProposal = async () => {
     try {
-      setStatus("Creating beneficiary change proposal...");
-      const tx = await governor.proposeBeneficiaryChange(newBeneficiary, proposalDescription);
-      await tx.wait();
-      setStatus("Proposal created successfully!");
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const chainId = await provider.getNetwork().then(n => n.chainId);
+      
+      const start = Math.floor(Date.now() / 1000) + 300; // Start in 5 minutes
+      const end = start + 7 * 24 * 60 * 60; // 7 days voting period
+
+      // Create proposal body with execution details
+      let body = proposalDescription;
+      if (proposalType === "beneficiary" && newBeneficiary) {
+        body += `\n\n**Execution Details:**\nNew Beneficiary: ${newBeneficiary}`;
+      }
+
+      const proposal = {
+        space: SNAPSHOT_SPACE,
+        type: "single-choice",
+        title: proposalTitle,
+        body,
+        choices: ["For", "Against", "Abstain"],
+        start,
+        end,
+        snapshot: await provider.getBlockNumber(),
+        network: chainId.toString(),
+        strategies: [
+          {
+            name: "erc721",
+            network: chainId.toString(),
+            params: {
+              address: CONTRACTS.DONOR_NFT,
+              symbol: "HOPE"
+            }
+          }
+        ],
+        plugins: JSON.stringify({}),
+        metadata: JSON.stringify({
+          proposalType,
+          executionData: proposalType === "beneficiary" ? { newBeneficiary } : {}
+        })
+      };
+
+      await client.proposal(signer, address, proposal);
+      setStatus("Proposal submitted to Snapshot!");
+      setProposalTitle("");
+      setProposalDescription("");
       setNewBeneficiary("");
-      setProposalDescription("");
-    } catch (error) {
-      console.error(error);
-      setStatus("Failed to create proposal");
+      await fetchSnapshotProposals();
+    } catch (e) {
+      console.error(e);
+      setStatus("Proposal submission failed: " + e.message);
     }
   };
 
-  const createPauseProposal = async () => {
-    if (!governor || !proposalDescription) return;
+  const fetchSnapshotProposals = async () => {
     try {
-      setStatus("Creating pause proposal...");
-      const tx = await governor.proposePause(proposalDescription);
-      await tx.wait();
-      setStatus("Pause proposal created!");
-      setProposalDescription("");
+      const res = await fetch(`https://hub.snapshot.org/graphql`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `
+            query {
+              proposals(
+                first: 10,
+                where: { space: "${SNAPSHOT_SPACE}" },
+                orderBy: "created",
+                orderDirection: desc
+              ) {
+                id
+                title
+                body
+                choices
+                start
+                end
+                state
+                scores
+                scores_total
+                metadata
+              }
+            }
+          `
+        })
+      });
+      const json = await res.json();
+      setSnapshotProposals(json.data?.proposals || []);
     } catch (error) {
-      console.error(error);
-      setStatus("Failed to create pause proposal");
+      console.error("Failed to fetch proposals:", error);
     }
   };
 
-  const createUnpauseProposal = async () => {
-    if (!governor || !proposalDescription) return;
+  const voteOnSnapshotProposal = async (proposalId, choiceIndex) => {
     try {
-      setStatus("Creating unpause proposal...");
-      const tx = await governor.proposeUnpause(proposalDescription);
-      await tx.wait();
-      setStatus("Unpause proposal created!");
-      setProposalDescription("");
-    } catch (error) {
-      console.error(error);
-      setStatus("Failed to create unpause proposal");
-    }
-  };
-
-  const createMilestoneProposal = async () => {
-    if (!governor || !milestoneAmount || !proposalDescription) return;
-    try {
-      setStatus("Creating milestone proposal...");
-      const amount = ethers.parseEther(milestoneAmount);
-      const tx = await governor.proposeAddMilestone(amount, proposalDescription);
-      await tx.wait();
-      setStatus("Milestone proposal created!");
-      setMilestoneAmount("");
-      setProposalDescription("");
-    } catch (error) {
-      console.error(error);
-      setStatus("Failed to create milestone proposal");
-    }
-  };
-
-  const voteOnProposal = async (proposalId, support) => {
-    if (!governor) return;
-    try {
-      setStatus(`Casting vote on proposal ${proposalId}...`);
-      const tx = await governor.castVote(proposalId, support);
-      await tx.wait();
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      await client.vote(signer, address, {
+        space: SNAPSHOT_SPACE,
+        proposal: proposalId,
+        type: "single-choice",
+        choice: choiceIndex,
+        metadata: JSON.stringify({})
+      });
       setStatus("Vote cast successfully!");
-    } catch (error) {
-      console.error(error);
-      setStatus("Failed to cast vote");
+      await fetchSnapshotProposals();
+    } catch (e) {
+      console.error(e);
+      setStatus("Vote submission failed: " + e.message);
     }
   };
 
-  if (!isConnected) {
-    return (
-      <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-        <h2 className="text-2xl font-bold mb-4">🏛️ HopeStream DAO</h2>
-        <p className="text-gray-600">Please connect your wallet to participate in governance.</p>
-      </div>
-    );
-  }
+  // ON-CHAIN EXECUTION FUNCTIONS
+  const executeApprovedProposal = async (proposal) => {
+    if (!vault) return;
+    
+    try {
+      const metadata = JSON.parse(proposal.metadata || "{}");
+      const proposalType = metadata.proposalType;
+      
+      setStatus("Executing proposal on-chain...");
+      
+      if (proposalType === "beneficiary" && metadata.executionData?.newBeneficiary) {
+        const tx = await vault.setBeneficiary(metadata.executionData.newBeneficiary);
+        await tx.wait();
+        setStatus("Beneficiary updated successfully!");
+      } else if (proposalType === "pause") {
+        const tx = await vault.pause();
+        await tx.wait();
+        setStatus("Contract paused successfully!");
+      } else if (proposalType === "unpause") {
+        const tx = await vault.unpause();
+        await tx.wait();
+        setStatus("Contract unpaused successfully!");
+      } else if (proposalType === "release") {
+        const tx = await vault.releaseFunds();
+        await tx.wait();
+        setStatus("Funds released successfully!");
+      } else {
+        setStatus("Unknown proposal type for execution");
+      }
+      
+      await loadUserData(nft, vault);
+    } catch (error) {
+      console.error(error);
+      setStatus("Execution failed: " + error.message);
+    }
+  };
+
+  const canExecute = (proposal) => {
+    if (proposal.state !== "closed") return false;
+    if (!proposal.scores || proposal.scores.length < 2) return false;
+    
+    // Check if "For" votes won (index 0)
+    return proposal.scores[0] > proposal.scores[1];
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-      <div className="mb-6">
-        <h2 className="text-3xl font-bold mb-2">🏛️ HopeStream DAO</h2>
-        <p className="text-gray-600">Decentralized governance for disaster relief funding</p>
-      </div>
+      <h2 className="text-3xl font-bold mb-2">🏛️ HopeStream DAO</h2>
+      <p className="text-gray-600 mb-4">Decentralized governance for disaster relief</p>
+      <p className="text-sm text-blue-600 mb-6">
+        💡 Proposals and voting happen off-chain via Snapshot. Execution happens on-chain after approval.
+      </p>
 
-      {/* Navigation Tabs */}
       <div className="flex space-x-4 mb-6 border-b">
-        {["overview", "propose", "vote"].map((tab) => (
+        {["overview", "propose", "vote", "execute"].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 font-medium capitalize ${
-              activeTab === tab
-                ? "text-blue-600 border-b-2 border-blue-600"
-                : "text-gray-500 hover:text-gray-700"
+              activeTab === tab ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
             }`}
           >
             {tab}
@@ -240,188 +300,157 @@ export default function DAOInterface() {
         ))}
       </div>
 
-      {/* Overview Tab */}
       {activeTab === "overview" && (
-        <div className="space-y-6">
-          {/* User Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h3 className="font-semibold text-blue-800">Your Voting Power</h3>
-              <p className="text-2xl font-bold text-blue-600">{votingPower}</p>
-              <p className="text-sm text-blue-600">
-                {hasNFT ? "✅ NFT Holder" : "❌ No NFT"}
-              </p>
-            </div>
-            
-            <div className="bg-green-50 p-4 rounded-lg">
-              <h3 className="font-semibold text-green-800">Delegation Status</h3>
-              <p className="text-lg font-bold text-green-600">
-                {isDelegated ? "✅ Delegated" : "❌ Not Delegated"}
-              </p>
-              {!isDelegated && hasNFT && (
-                <button
-                  onClick={delegateVotes}
-                  className="mt-2 px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                >
-                  Delegate to Self
-                </button>
-              )}
-            </div>
-
-            <div className="bg-purple-50 p-4 rounded-lg">
-              <h3 className="font-semibold text-purple-800">Contract Status</h3>
-              <p className="text-lg font-bold text-purple-600">
-                {vaultStats?.isPaused ? "⏸️ Paused" : "▶️ Active"}
-              </p>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-blue-800">Your Voting Power</h3>
+            <p className="text-2xl font-bold text-blue-600">{votingPower}</p>
+            <p className="text-sm text-blue-600">{hasNFT ? "✅ NFT Holder" : "❌ No NFT"}</p>
           </div>
 
-          {/* Vault Stats */}
-          {vaultStats && (
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h3 className="text-xl font-semibold mb-4">📊 Vault Statistics</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Current Beneficiary</p>
-                  <p className="font-mono text-sm break-all">{vaultStats.beneficiary}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Donated</p>
-                  <p className="font-bold">{vaultStats.donated} ETH</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Released</p>
-                  <p className="font-bold">{vaultStats.released} ETH</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Milestones</p>
-                  <p className="font-bold">{vaultStats.milestones}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Status</p>
-                  <p className="font-bold">{vaultStats.isPaused ? "Paused" : "Active"}</p>
-                </div>
-              </div>
+          <div className="bg-green-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-green-800">Delegation Status</h3>
+            <p className="text-lg font-bold text-green-600">{isDelegated ? "✅ Self-Delegated" : "❌ Not Delegated"}</p>
+            {!isDelegated && hasNFT && (
+              <button onClick={delegateVotes} className="mt-2 px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700">
+                Delegate to Self
+              </button>
+            )}
+          </div>
+
+          <div className="bg-purple-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-purple-800">Vault Stats</h3>
+            <div className="text-sm text-purple-600">
+              <div>Donated: {vaultStats?.donated || "0"} ETH</div>
+              <div>Released: {vaultStats?.released || "0"} ETH</div>
+              <div>Milestones: {vaultStats?.milestones || "0"}</div>
             </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* Propose Tab */}
       {activeTab === "propose" && (
-        <div className="space-y-6">
-          {!hasNFT && (
-            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-              <p className="text-yellow-800">
-                ℹ️ You need to donate first to receive an NFT and gain proposal rights.
-              </p>
-            </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Proposal Type</label>
+            <select
+              value={proposalType}
+              onChange={(e) => setProposalType(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded"
+            >
+              <option value="general">General Proposal</option>
+              <option value="beneficiary">Change Beneficiary</option>
+              <option value="pause">Pause Contract</option>
+              <option value="unpause">Unpause Contract</option>
+              <option value="release">Release Funds</option>
+            </select>
+          </div>
+
+          <input
+            type="text"
+            placeholder="Proposal Title"
+            value={proposalTitle}
+            onChange={(e) => setProposalTitle(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded"
+          />
+
+          {proposalType === "beneficiary" && (
+            <input
+              type="text"
+              placeholder="New Beneficiary Address (0x...)"
+              value={newBeneficiary}
+              onChange={(e) => setNewBeneficiary(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded"
+            />
           )}
 
-          {/* Beneficiary Change Proposal */}
-          <div className="border border-gray-200 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold mb-3">👤 Change Beneficiary</h3>
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="New beneficiary address (0x...)"
-                value={newBeneficiary}
-                onChange={(e) => setNewBeneficiary(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded"
-              />
-              <textarea
-                placeholder="Proposal description and reasoning..."
-                value={proposalDescription}
-                onChange={(e) => setProposalDescription(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded h-24"
-              />
-              <button
-                onClick={createBeneficiaryProposal}
-                disabled={!hasNFT || !newBeneficiary || !proposalDescription}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
-              >
-                Create Beneficiary Proposal
-              </button>
-            </div>
-          </div>
+          <textarea
+            placeholder="Proposal Description"
+            value={proposalDescription}
+            onChange={(e) => setProposalDescription(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded h-32"
+          />
 
-          {/* Pause/Unpause Proposals */}
-          <div className="border border-gray-200 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold mb-3">⏸️ Pause/Unpause Contract</h3>
-            <div className="space-y-3">
-              <textarea
-                placeholder="Reason for pausing/unpausing..."
-                value={proposalDescription}
-                onChange={(e) => setProposalDescription(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded h-24"
-              />
-              <div className="flex space-x-3">
-                <button
-                  onClick={createPauseProposal}
-                  disabled={!hasNFT || !proposalDescription}
-                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400"
-                >
-                  Propose Pause
-                </button>
-                <button
-                  onClick={createUnpauseProposal}
-                  disabled={!hasNFT || !proposalDescription}
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400"
-                >
-                  Propose Unpause
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Milestone Proposal */}
-          <div className="border border-gray-200 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold mb-3">🎯 Add Milestone</h3>
-            <div className="space-y-3">
-              <input
-                type="number"
-                placeholder="Release amount in ETH"
-                value={milestoneAmount}
-                onChange={(e) => setMilestoneAmount(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded"
-                step="0.01"
-              />
-              <textarea
-                placeholder="Milestone description..."
-                value={proposalDescription}
-                onChange={(e) => setProposalDescription(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded h-24"
-              />
-              <button
-                onClick={createMilestoneProposal}
-                disabled={!hasNFT || !milestoneAmount || !proposalDescription}
-                className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-gray-400"
-              >
-                Create Milestone Proposal
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={createSnapshotProposal}
+            disabled={!hasNFT || !proposalTitle || !proposalDescription || (proposalType === "beneficiary" && !newBeneficiary)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
+          >
+            Submit Proposal to Snapshot
+          </button>
         </div>
       )}
 
-      {/* Vote Tab */}
       {activeTab === "vote" && (
         <div className="space-y-6">
-          <p className="text-gray-600">
-            Active proposals will appear here. You can vote For, Against, or Abstain on each proposal.
-          </p>
-          
-          {/* Placeholder for proposal list */}
-          <div className="border border-gray-200 p-6 rounded-lg text-center">
-            <p className="text-gray-400">No active proposals at the moment.</p>
-            <p className="text-sm text-gray-400 mt-2">
-              Create a proposal in the "Propose" tab to get started!
-            </p>
-          </div>
+          {snapshotProposals.length > 0 ? (
+            snapshotProposals.map((proposal) => (
+              <div key={proposal.id} className="border p-4 rounded-lg">
+                <h4 className="font-semibold text-lg">{proposal.title}</h4>
+                <p className="text-gray-600 text-sm mb-2">{proposal.body}</p>
+                
+                {proposal.state === "active" && (
+                  <div className="flex space-x-2 mb-2">
+                    {proposal.choices.map((choice, index) => (
+                      <button
+                        key={index}
+                        onClick={() => voteOnSnapshotProposal(proposal.id, index + 1)}
+                        disabled={!hasNFT}
+                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm disabled:bg-gray-400"
+                      >
+                        Vote {choice}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="text-sm text-gray-400">
+                  <div>Status: {proposal.state}</div>
+                  {proposal.scores && (
+                    <div>Results: For: {proposal.scores[0] || 0} | Against: {proposal.scores[1] || 0} | Abstain: {proposal.scores[2] || 0}</div>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-gray-400">No proposals found. Create one to get started!</div>
+          )}
         </div>
       )}
 
-      {/* Status Message */}
+      {activeTab === "execute" && (
+        <div className="space-y-6">
+          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+            <h3 className="font-semibold text-yellow-800 mb-2">⚡ Proposal Execution</h3>
+            <p className="text-sm text-yellow-700">
+              Only approved proposals can be executed on-chain. You need appropriate permissions to execute.
+            </p>
+          </div>
+
+          {snapshotProposals.filter(p => p.state === "closed" && canExecute(p)).length > 0 ? (
+            snapshotProposals
+              .filter(p => p.state === "closed" && canExecute(p))
+              .map((proposal) => (
+                <div key={proposal.id} className="border border-green-200 p-4 rounded-lg bg-green-50">
+                  <h4 className="font-semibold text-lg text-green-800">{proposal.title}</h4>
+                  <p className="text-green-600 text-sm mb-2">{proposal.body}</p>
+                  <div className="text-sm text-green-600 mb-3">
+                    ✅ Proposal Approved - Ready for execution
+                  </div>
+                  <button
+                    onClick={() => executeApprovedProposal(proposal)}
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                  >
+                    Execute On-Chain
+                  </button>
+                </div>
+              ))
+          ) : (
+            <div className="text-gray-400">No approved proposals ready for execution.</div>
+          )}
+        </div>
+      )}
+
       {status && (
         <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
           <p className="text-blue-800">{status}</p>
@@ -429,4 +458,4 @@ export default function DAOInterface() {
       )}
     </div>
   );
-} 
+}

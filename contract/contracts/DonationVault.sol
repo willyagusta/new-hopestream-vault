@@ -132,7 +132,7 @@ contract DonationVault is Ownable, Pausable {
 
     // Modified to be called by the Defender Relayer
     function releaseFunds() public whenNotPaused {
-        require(msg.sender == defenderRelayer || msg.sender == owner() || msg.sender == governanceContract, "Not authorized");
+        require(msg.sender == defenderRelayer || msg.sender == governanceContract, "Not authorized");
         
         uint256 totalToRelease;
 
