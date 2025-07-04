@@ -492,7 +492,7 @@ const EarthquakeMap = () => {
       <div className="relative">
         <div 
           ref={mapRef}
-          className="w-full rounded-lg mb-4 border border-gray-300"
+          className="w-full rounded-lg mb-4 border border-gray-300 relative z-10"
           style={{ height: '400px', minHeight: '400px' }}
         />
         

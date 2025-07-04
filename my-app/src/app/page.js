@@ -8,7 +8,7 @@ import ScrollHeader from "./components/Header";
 import DAOInterface from "./components/DAOInterface";
 import EarthquakeMap from "./components/EarthquakeInterface";
 
-const CONTRACT_ADDRESS = "0x6d66514137F4698D7Ebf1f68C5CB6D5aF337B8b6";
+const CONTRACT_ADDRESS = "0x0a9F6B6cF48039A6402460e3189D7D1b780CD90c";
 const TARGET_ETH = 0.5;
 
 const CONTRACT_ABI = [
@@ -43,6 +43,12 @@ export default function Home() {
       setup();
     }
   }, [walletClient]);
+
+  useEffect(() => {
+    if (contract) {
+      fetchVaultStats();
+    }
+  }, [contract]);
 
   const fetchVaultStats = async () => {
     if (!contract) return;
