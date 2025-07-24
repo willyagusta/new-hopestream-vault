@@ -124,7 +124,7 @@ export default function Home() {
           <h1 className="text-4xl font-bold mb-2">HopeStream Vault</h1>
           <h2 className="text-2xl font-bold mb-2 text-blue-600">Disaster Relief for Humanity</h2>
           <p className="text-gray-700 mb-4">
-            This HopeStream vault supports communities affected by natural disasters in any countries across the world.
+            This HopeStream vault supports communities affected by earthquakes in Indonesia and potentially in other countries in the future.
             Every donation helps fund emergency aid, food, water, shelter, and recovery programs.
           </p>
           
