@@ -149,8 +149,7 @@ The DonationVault seamlessly integrates with the HopeStream DAO:
 ### Smart Contracts
 - **Solidity**: Core contract language
 - **Hardhat**: Development and testing framework
-- **OpenZeppelin**: Security-audited contract libraries
-- **Chainlink**: Automated fund releases
+- **OpenZeppelin**: Security-audited contract libraries & automated transaction
 
 ### Infrastructure  
 - **Ethereum Sepolia**: Testnet deployment
